@@ -3,6 +3,7 @@ use atrium_api::com::atproto::sync::subscribe_repos::Message;
 use atrium_xrpc_server::stream::frames::Frame;
 use futures::StreamExt;
 use tokio_tungstenite::{connect_async, tungstenite};
+use rs_car::Cid;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,20 +28,23 @@ async fn process_message(message: &[u8]) -> Result<(), Box<dyn std::error::Error
                         }
                         let (items, _) =
                             rs_car::car_read_all(&mut commit.blocks.as_slice(), true).await?;
-                        if let Some((_, item)) = items.iter().find(|(cid, _)| Some(*cid) == op.cid)
-                        {
+
+                        let cid = op.cid.unwrap().link;
+                        let op_cid_64: Option<Cid> = Some(Cid::try_from(cid.as_str())?);
+
+                        if let Some((_, item)) = items.iter().find(|(cid, _)| Some(*cid) == op_cid_64) {
                             if let Ok(value) =
                                 ciborium::de::from_reader::<Record, _>(&mut item.as_slice())
                             {
-                                println!("{}: {}", value.created_at, value.text);
+                                println!("{}: {}", value.created_at.as_ref(), value.text);
                             } else {
                                 println!("FAILED: could not deserialize post from item of length: {}", item.len());
 
                             }
                         } else {
                             println!(
-                                "FAILED: could not find item with operation cid {:?} out of {} items",
-                                op.cid,
+                                "FAILED: could not find item with operation cid {} out of {} items",
+                                cid,
                                 items.len()
                             );
                         }
